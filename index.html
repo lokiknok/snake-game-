@@ -1,0 +1,514 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Realistic Wrap-Around Snake</title>
+    <style>
+        :root {
+            --bg-color: #14191f;
+            --board-color: #0d1117;
+            --text-color: #f0f6fc;
+            --accent-color: #58a6ff;
+            --food-color: #ff453a;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            user-select: none;
+            -webkit-user-select: none;
+        }
+
+        body {
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            overflow: hidden;
+            touch-action: none; /* Prevents screen bouncing/scrolling on mobile swipes */
+        }
+
+        /* Scoreboard & Settings Header */
+        .header-panel {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            width: 90vw;
+            max-width: 420px;
+            margin-bottom: 12px;
+        }
+
+        .scoreboard {
+            display: flex;
+            gap: 15px;
+            font-size: 1rem;
+            font-weight: 600;
+        }
+
+        .score-box {
+            background: rgba(255, 255, 255, 0.07);
+            padding: 6px 14px;
+            border-radius: 8px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .settings-btn {
+            background: rgba(255, 255, 255, 0.07);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            color: var(--text-color);
+            padding: 6px 12px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: bold;
+        }
+
+        /* Game Core Container */
+        .game-container {
+            position: relative;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.6);
+            border-radius: 16px;
+            overflow: hidden;
+        }
+
+        canvas {
+            background-color: var(--board-color);
+            display: block;
+            border: 2px solid #21262d;
+            border-radius: 16px;
+        }
+
+        /* Overlay Menus (Start, Game Over, Settings) */
+        .overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(13, 17, 23, 0.9);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.2s ease;
+            z-index: 10;
+            padding: 20px;
+            text-align: center;
+        }
+
+        .overlay.active {
+            opacity: 1;
+            pointer-events: auto;
+        }
+
+        .overlay h2 {
+            font-size: 1.8rem;
+            color: var(--accent-color);
+            margin-bottom: 15px;
+            letter-spacing: 1px;
+        }
+
+        .btn {
+            background-color: var(--accent-color);
+            color: #0d1117;
+            border: none;
+            padding: 12px 24px;
+            font-size: 1rem;
+            font-weight: bold;
+            border-radius: 8px;
+            cursor: pointer;
+            margin-top: 15px;
+            width: 80%;
+            max-width: 200px;
+        }
+
+        /* Settings UI Controls */
+        .setting-row {
+            margin: 10px 0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 5px;
+            width: 100%;
+        }
+
+        .setting-row label {
+            font-size: 0.9rem;
+            color: #8b949e;
+        }
+
+        .setting-row input {
+            background: #21262d;
+            border: 1px solid #30363d;
+            color: #fff;
+            padding: 8px;
+            border-radius: 6px;
+            text-align: center;
+            width: 60%;
+            font-size: 1rem;
+        }
+
+        .hint-text {
+            font-size: 0.85rem;
+            color: #8b949e;
+            margin-top: 15px;
+        }
+
+        @media (max-width: 768px) {
+            .hint-text::after {
+                content: "Swipe on the game board to steer your snake.";
+            }
+        }
+        @media (min-width: 769px) {
+            .hint-text::after {
+                content: "Use Arrow keys or WASD to steer your snake.";
+            }
+        }
+    </style>
+</head>
+<body>
+
+    <!-- Header UI -->
+    <div class="header-panel">
+        <div class="scoreboard">
+            <div class="score-box">Score: <span id="currentScore">0</span></div>
+            <div class="score-box">High: <span id="highScore">0</span></div>
+        </div>
+        <button class="settings-btn" id="settingsToggleBtn">⚙ Settings</button>
+    </div>
+
+    <!-- Screen Matrix -->
+    <div class="game-container">
+        <canvas id="gameCanvas"></canvas>
+        
+        <!-- Standard Game Over / Welcome Panel -->
+        <div class="overlay active" id="menuOverlay">
+            <h2 id="menuTitle">SNAKE REBORN</h2>
+            <div id="finalScoreDisplay" style="display:none; margin-bottom:10px;"></div>
+            <button class="btn" id="startBtn">START</button>
+            <div class="hint-text"></div>
+        </div>
+
+        <!-- Settings Specific Panel -->
+        <div class="overlay" id="settingsOverlay">
+            <h2>GAME SETTINGS</h2>
+            <div class="setting-row">
+                <label for="highScoreAnte">Set Custom High Score Ante:</label>
+                <input type="number" id="highScoreAnte" min="0" value="0">
+            </div>
+            <button class="btn" id="saveSettingsBtn" style="background-color: #238636; color: white;">Save & Close</button>
+            <button class="btn" id="resetHighBtn" style="background-color: var(--food-color); color: white; margin-top:8px;">Reset Board Completely</button>
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const currentScoreEl = document.getElementById('currentScore');
+        const highScoreEl = document.getElementById('highScore');
+        const menuOverlay = document.getElementById('menuOverlay');
+        const settingsOverlay = document.getElementById('settingsOverlay');
+        const menuTitle = document.getElementById('menuTitle');
+        const finalScoreDisplay = document.getElementById('finalScoreDisplay');
+        const startBtn = document.getElementById('startBtn');
+        const settingsToggleBtn = document.getElementById('settingsToggleBtn');
+        const saveSettingsBtn = document.getElementById('saveSettingsBtn');
+        const resetHighBtn = document.getElementById('resetHighBtn');
+        const highScoreAnteInput = document.getElementById('highScoreAnte');
+
+        // Dynamic Viewport Sizing 
+        const isMobile = window.innerWidth < 768;
+        const boardSize = isMobile ? Math.min(window.innerWidth * 0.92, 380) : 420; 
+        const gridSize = 20; 
+        const tileCount = boardSize / gridSize;
+
+        canvas.width = boardSize;
+        canvas.height = boardSize;
+
+        // Core Game Configurations
+        let snake = [];
+        let food = { x: 0, y: 0 };
+        let dx = gridSize; 
+        let dy = 0;        
+        let score = 0;
+        let gameInterval = null;
+        const gameSpeed = 90; // Fluid speed
+        let changingDirection = false;
+
+        // Sync local records 
+        if(!localStorage.getItem('snakeHighScore')) {
+            localStorage.setItem('snakeHighScore', '0');
+        }
+        highScoreEl.textContent = localStorage.getItem('snakeHighScore');
+        highScoreAnteInput.value = localStorage.getItem('snakeHighScore');
+
+        // --- Init State ---
+        function initGame() {
+            snake = [
+                { x: gridSize * 5, y: gridSize * 7 },
+                { x: gridSize * 4, y: gridSize * 7 },
+                { x: gridSize * 3, y: gridSize * 7 }
+            ];
+            dx = gridSize;
+            dy = 0;
+            score = 0;
+            currentScoreEl.textContent = score;
+            generateFood();
+        }
+
+        function startGame() {
+            initGame();
+            menuOverlay.classList.remove('active');
+            settingsOverlay.classList.remove('active');
+            if (gameInterval) clearInterval(gameInterval);
+            gameInterval = setInterval(mainLoop, gameSpeed);
+        }
+
+        function gameOver() {
+            clearInterval(gameInterval);
+            menuTitle.textContent = "GAME OVER";
+            finalScoreDisplay.textContent = `You scored ${score} points!`;
+            finalScoreDisplay.style.display = "block";
+            startBtn.textContent = "TRY AGAIN";
+            menuOverlay.classList.add('active');
+            
+            let currentHigh = parseInt(localStorage.getItem('snakeHighScore'), 10) || 0;
+            if (score > currentHigh) {
+                localStorage.setItem('snakeHighScore', score.toString());
+                highScoreEl.textContent = score;
+                highScoreAnteInput.value = score;
+            }
+        }
+
+        // --- Game Tick Engine ---
+        function mainLoop() {
+            if (hasSelfCollided()) {
+                gameOver();
+                return;
+            }
+
+            changingDirection = false;
+            clearCanvas();
+            drawFood();
+            moveSnake();
+            drawSnake();
+        }
+
+        function clearCanvas() {
+            ctx.fillStyle = '#0d1117';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            
+            // Subtle Grid lines for tracking movement depth
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.02)';
+            for (let i = 0; i < canvas.width; i += gridSize) {
+                ctx.beginPath();
+                ctx.moveTo(i, 0); ctx.lineTo(i, canvas.height);
+                ctx.moveTo(0, i); ctx.lineTo(canvas.width, i);
+                ctx.stroke();
+            }
+        }
+
+        // --- Render Organic Beautiful Snake ---
+        function drawSnake() {
+            snake.forEach((part, index) => {
+                const isHead = index === 0;
+                
+                // Creates smooth snake tapering effect (tail shrinks naturally)
+                const scaleFactor = Math.max(0.4, 1 - (index / snake.length) * 0.5);
+                const size = gridSize * scaleFactor;
+                const offset = (gridSize - size) / 2;
+
+                ctx.save();
+                ctx.translate(part.x + gridSize/2, part.y + gridSize/2);
+
+                if (isHead) {
+                    // Head Design (Brighter neon green with depth accent)
+                    ctx.fillStyle = '#72f1b8';
+                    ctx.shadowBlur = 10;
+                    ctx.shadowColor = '#72f1b8';
+                    ctx.beginPath();
+                    ctx.arc(0, 0, gridSize / 1.8, 0, 2 * Math.PI);
+                    ctx.fill();
+
+                    // Eyes positioning relative to direction Vector
+                    ctx.shadowBlur = 0; 
+                    ctx.fillStyle = '#0d1117'; 
+                    let eyeX1 = 0, eyeY1 = 0, eyeX2 = 0, eyeY2 = 0;
+                    
+                    if (dx > 0) {       eyeX1 = 3;  eyeY1 = -5; eyeX2 = 3;  eyeY2 = 5;  } // Facing Right
+                    else if (dx < 0) {  eyeX1 = -3; eyeY1 = -5; eyeX2 = -3; eyeY2 = 5;  } // Facing Left
+                    else if (dy > 0) {  eyeX1 = -5; eyeY1 = 3;  eyeX2 = 5;  eyeY2 = 3;  } // Facing Down
+                    else if (dy < 0) {  eyeX1 = -5; eyeY1 = -3; eyeX2 = 5;  eyeY2 = -3; } // Facing Up
+
+                    ctx.beginPath(); ctx.arc(eyeX1, eyeY1, 2.5, 0, 2 * Math.PI); ctx.fill();
+                    ctx.beginPath(); ctx.arc(eyeX2, eyeY2, 2.5, 0, 2 * Math.PI); ctx.fill();
+                } else {
+                    // Body segments (Deep forest gradient transition)
+                    let greenValue = Math.floor(200 - (index * 5));
+                    ctx.fillStyle = `rgb(46, ${Math.max(100, greenValue)}, 101)`;
+                    
+                    ctx.beginPath();
+                    ctx.arc(0, 0, size / 1.9, 0, 2 * Math.PI);
+                    ctx.fill();
+                }
+                ctx.restore();
+            });
+        }
+
+        // --- Wrap-Around Mechanics Implementation ---
+        function moveSnake() {
+            // Apply step vector
+            let newX = snake[0].x + dx;
+            let newY = snake[0].y + dy;
+
+            // Handle Horizontal Border wrapping
+            if (newX >= canvas.width) newX = 0;
+            else if (newX < 0) newX = canvas.width - gridSize;
+
+            // Handle Vertical Border wrapping
+            if (newY >= canvas.height) newY = 0;
+            else if (newY < 0) newY = canvas.height - gridSize;
+
+            const head = { x: newX, y: newY };
+            snake.unshift(head);
+
+            if (snake[0].x === food.x && snake[0].y === food.y) {
+                score += 10;
+                currentScoreEl.textContent = score;
+                generateFood();
+            } else {
+                snake.pop();
+            }
+        }
+
+        function generateFood() {
+            food.x = Math.floor(Math.random() * tileCount) * gridSize;
+            food.y = Math.floor(Math.random() * tileCount) * gridSize;
+            
+            // Confirm food hasn't spawned internally
+            snake.forEach(part => {
+                if (part.x === food.x && part.y === food.y) generateFood();
+            });
+        }
+
+        function drawFood() {
+            ctx.save();
+            ctx.shadowBlur = 12;
+            ctx.shadowColor = varFoodColor = '#ff453a';
+            ctx.fillStyle = varFoodColor;
+            
+            // Spherical glossy red apple look
+            ctx.beginPath();
+            ctx.arc(food.x + gridSize/2, food.y + gridSize/2, gridSize/2.2, 0, 2 * Math.PI);
+            ctx.fill();
+            ctx.restore();
+        }
+
+        // --- Custom Selective Crash Rule ---
+        function hasSelfCollided() {
+            // Only fails if head makes contact with any index array higher than head itself
+            for (let i = 1; i < snake.length; i++) {
+                if (snake[i].x === snake[0].x && snake[i].y === snake[0].y) return true;
+            }
+            return false;
+        }
+
+        // --- Vector Input Filter ---
+        function handleDirectionChange(newDx, newDy) {
+            if (changingDirection) return;
+
+            const goingUp = dy === -gridSize;
+            const goingDown = dy === gridSize;
+            const goingRight = dx === gridSize;
+            const goingLeft = dx === -gridSize;
+
+            if (newDx === gridSize && !goingLeft) { dx = gridSize; dy = 0; changingDirection = true; }
+            if (newDx === -gridSize && !goingRight) { dx = -gridSize; dy = 0; changingDirection = true; }
+            if (newDy === gridSize && !goingUp) { dx = 0; dy = gridSize; changingDirection = true; }
+            if (newDy === -gridSize && !goingDown) { dx = 0; dy = -gridSize; changingDirection = true; }
+        }
+
+        // --- [PC CONTROL MASTER] Keyboard Triggers ---
+        document.addEventListener('keydown', (e) => {
+            const key = e.key.toLowerCase();
+            if (key === 'arrowleft' || key === 'a') handleDirectionChange(-gridSize, 0);
+            if (key === 'arrowup' || key === 'w') handleDirectionChange(0, -gridSize);
+            if (key === 'arrowright' || key === 'd') handleDirectionChange(gridSize, 0);
+            if (key === 'arrowdown' || key === 's') handleDirectionChange(0, gridSize);
+        });
+
+        // --- [MOBILE CONTROL MASTER] Pure Fluid Touch Swiping ---
+        let touchStartX = 0;
+        let touchStartY = 0;
+
+        canvas.addEventListener('touchstart', (e) => {
+            touchStartX = e.touches[0].clientX;
+            touchStartY = e.touches[0].clientY;
+        }, { passive: true });
+
+        canvas.addEventListener('touchend', (e) => {
+            if (!touchStartX || !touchStartY) return;
+
+            let touchEndX = e.changedTouches[0].clientX;
+            let touchEndY = e.changedTouches[0].clientY;
+
+            let diffX = touchEndX - touchStartX;
+            let diffY = touchEndY - touchStartY;
+            
+            const threshold = 30; // Minimum swipe distance required
+
+            // Filter dominant axis to parse pure swipe vector direction
+            if (Math.abs(diffX) > Math.abs(diffY)) {
+                if (Math.abs(diffX) > threshold) {
+                    if (diffX > 0) handleDirectionChange(gridSize, 0);  // Right Swipe
+                    else handleDirectionChange(-gridSize, 0);          // Left Swipe
+                }
+            } else {
+                if (Math.abs(diffY) > threshold) {
+                    if (diffY > 0) handleDirectionChange(0, gridSize);  // Down Swipe
+                    else handleDirectionChange(0, -gridSize);          // Up Swipe
+                }
+            }
+            // Reset points
+            touchStartX = 0;
+            touchStartY = 0;
+        }, { passive: true });
+
+        // --- Settings Box Event Listeners ---
+        settingsToggleBtn.addEventListener('click', () => {
+            clearInterval(gameInterval);
+            menuOverlay.classList.remove('active');
+            settingsOverlay.classList.add('active');
+        });
+
+        saveSettingsBtn.addEventListener('click', () => {
+            let userAnte = parseInt(highScoreAnteInput.value, 10);
+            if (isNaN(userAnte) || userAnte < 0) userAnte = 0;
+            
+            localStorage.setItem('snakeHighScore', userAnte.toString());
+            highScoreEl.textContent = userAnte;
+            
+            settingsOverlay.classList.remove('active');
+            menuOverlay.classList.add('active');
+        });
+
+        resetHighBtn.addEventListener('click', () => {
+            if(confirm("Are you sure you want to completely clear the High Score tracking dashboard?")) {
+                localStorage.setItem('snakeHighScore', '0');
+                highScoreEl.textContent = '0';
+                highScoreAnteInput.value = 0;
+                alert("Scores cleared!");
+            }
+        });
+
+        startBtn.addEventListener('click', startGame);
+    </script>
+</body>
+</html>
